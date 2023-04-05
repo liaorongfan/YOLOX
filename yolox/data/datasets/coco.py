@@ -31,6 +31,46 @@ def remove_useless_info(coco):
                 anno.pop("segmentation", None)
 
 
+def remove_voc_classes(coco):
+    """
+    Remove VOC classes object in coco dataset for weekly supervised learning
+
+    """
+    assert isinstance(coco, COCO), f"{coco} must be an COCO object"
+
+    VOC_CLASSES = (
+        "airplane", "bicycle", "bird", "boat", "bottle",
+        "bus", "car", "cat", "chair", "cow",
+        "dining table", "dog", "horse", "motorcycle", "person",
+        "potted plant", "sheep", "couch", "train", "tv",
+    )
+    # remove category info
+    dataset = coco.dataset
+    cats_remove_voc = [
+        item for item in dataset["categories"]
+        if not item["name"] in VOC_CLASSES
+    ]
+    dataset["categories"] = cats_remove_voc
+    # remove image which contains any VOC classes
+    voc_classes_id = [
+        k for k, v in coco.cats.items() if v["name"] in VOC_CLASSES
+    ]
+    img_to_anns_remove_voc = {}
+    for img_id, annotations in coco.imgToAnns.items():
+        skip = False
+        for ann in annotations:
+            if ann["category_id"] in voc_classes_id:
+                skip = True
+        if skip:
+            continue
+        img_to_anns_remove_voc[img_id] = annotations
+    coco.imgToAnns = img_to_anns_remove_voc
+    coco.img_id_ls = list(img_to_anns_remove_voc.keys())
+    # modify coco meta data
+    cats_60 = {item["id"]: item for item in cats_remove_voc}
+    coco.cats = cats_60
+
+
 class COCODataset(CacheDataset):
     """
     COCO dataset class.
@@ -62,7 +102,9 @@ class COCODataset(CacheDataset):
 
         self.coco = COCO(os.path.join(self.data_dir, "annotations", self.json_file))
         remove_useless_info(self.coco)
-        self.ids = self.coco.getImgIds()
+        remove_voc_classes(self.coco)
+        # self.ids = self.coco.getImgIds()
+        self.ids = self.coco.img_id_ls
         self.num_imgs = len(self.ids)
         self.class_ids = sorted(self.coco.getCatIds())
         self.cats = self.coco.loadCats(self.coco.getCatIds())
